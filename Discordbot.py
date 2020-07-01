@@ -4,31 +4,43 @@
 # made by SpoonLoeffel
 
 # used Modules
-import discord
 import os
 import sys
 import time
-import json
 import pprint
+
+# for the Database
 import requests
+import json
+
+# for Discord integration
+import discord      # discord module
+import logging      # dependency for discord
 
 
+# Logger
+logger = logging.getLogger('discord')
+logger.setLevel(logging.FATAL)
+handler = logging.FileHandler(filename = 'discord.log', encoding = 'utf-8', mode = 'w')         # TODO Cleanup
+handler.setFormatter(logging.Formatter('%(asctime)s:%(levelname)s:%(name)s: %(message)s'))
+logger.addHandler(handler)
 
-# variables
+
+## variables ##
 token = None
-version = '0.0.2'
+version = '0.0.3'
 
 settings = {
-    'version': '0.0.2',                         # Version Number
+    'version': '0.0.3',                         # Version Number
     'databaseUpdated': None,                    # Timestamp of Database update
     'messagePosted': None,                      # Timestamp of last Message post
     'updateTime': 1700,                         # Default Update Time
     'autoUpdate': False,                        # En-/Disables Automatic Database download
     'dailyUpdate': False,                       # En-/Disables Automatic Message Posting
     'dbLocation': None,                         # Standard Location of Database
-    'updateChannels': ['408061983917867024'],   # Standard Channles to post update into
+    'updateChannels': [408061983917867024],     # Standard Channles to post update into
     'factionId': 75448,                         # Standard Faction ID
-    'owner': '167343578857603072',              # It's Myself
+    'owner': 167343578857603072,                # It's Myself
     'adminUsers': [],                           # User with Admin rights
     'tokenLocation': None,                      # Default location of Tokenfile
     }
@@ -60,7 +72,7 @@ def createTokenFile(tokenLocation):
     
 # Load Token file
 def loadTokenFile(tokenLocation):
-    fileObj = open(os.path.join(tokenLocationk, 'discordToken'), 'r')
+    fileObj = open(os.path.join(tokenLocation, 'discordToken'), 'r')
     token = fileObj.read()
     # TODO Add Error Checking
     return token
@@ -90,3 +102,42 @@ def downloadDB(dbLocation):
     dbFile.close()
 
 
+
+## Main Program ##
+# Startup
+# Load settings
+if os.path.isfile('DiscordBotSettings') == True:
+    settings = loadSettingsFile()
+else:
+    createSettingsFile()
+
+# Get the Token
+tokenLocation = settings['tokenLocation']
+if tokenLocation == None:
+    tokenLocation = ''
+if os.path.isfile(os.path.join(tokenLocation, 'discordToken')) != True:         # no token File exists
+    createTokenFile(tokenLocation)                                              # create template
+    print('No token Found\nDouble Check the file location\n' + tokenLocation)   # notify user
+    sys.exit()                                                                  # 
+else:
+    token = loadTokenFile(tokenLocation)
+
+
+
+# Discord integration
+
+client = discord.Client()
+
+@client.event
+async def on_ready():
+    print('We have logged in as {0.user}'.format(client))
+
+@client.event
+async def on_message(message):
+    if message.author == client.user:
+        return
+
+    if message.content.startswith('!ping'):
+        await message.channel.send('pong!')
+
+client.run(token)
