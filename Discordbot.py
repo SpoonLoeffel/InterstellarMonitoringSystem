@@ -12,6 +12,7 @@ import sys
 import time
 import datetime
 import pprint
+import schedule
 
 # for the Database
 import requests
@@ -19,6 +20,7 @@ import json
 
 # for Discord integration
 import discord      # discord module
+import asyncio
 import logging      # dependency for discord
 
 
@@ -32,14 +34,14 @@ logger.addHandler(handler)
 
 #### variables ####
 token = None
-version = '0.0.6'
+version = '0.0.8'
 
 settings = {
-    'version': '0.0.6',                                 # Version Number
+    'version': '0.0.8',                                 # Version Number
     'databaseUpdated': None,                            # Timestamp of Database update
     'messagePosted': None,                              # Timestamp of last Message post
     'updateTime': datetime.datetime(1, 1, 1, 17, 0),    # Default Update Time
-    'autoUpdate': False,                                # En-/Disables Automatic Database download
+    'autoDBUpdate': False,                              # En-/Disables Automatic Database download
     'dailyUpdate': False,                               # En-/Disables Automatic Message Posting
     'dbLocation': os.getcwd(),                          # Standard Location of Database
     'updateChannels': [408061983917867024],             # Standard Channles to post update into
@@ -122,6 +124,7 @@ def downloadDB():
     # TODO Add Error Checking
     settings['databaseUpdated'] = datetime.datetime.now()                   # Add Time when Database was updated
     createSettingsFile()
+    refreshFactions()
 
 # refresh loaded Factions
 def refreshFactions():
@@ -138,13 +141,26 @@ def refreshFactions():
             if k['minor_faction_id'] == settings['factionId']:                          # Is the desired faction in that system
                 cacheSystems['Systems'] = cacheSystems['Systems'] + [i]                 # add found system into cacheSystems
 
-
+# check if DB should be updated
+def checkDBUpdate():
+    dtnow = datetime.datetime.now()
+    updateDelta = datetime.timedelta(hours=24)
+    if settings['autoDBUpdate'] == True:
+        if settings['databaseUpdated'] < dtnow - updateDelta:
+            downloadDB()
+        elif settings['databaseUpdated'] == None:
+            downloadDB()
+        elif os.path.isfile(os.path.join(settings['dbLocation'], 'systems_populated.json')) == False:
+            downloadDB()
+        else:
+            refreshFactions()
+    
 ## Messages ##
 def readySystem(systemInfo, factionId):
     factionListPosition = 0
     for i in range(len(systemInfo['minor_faction_presences'])):
         if systemInfo['minor_faction_presences'][i]['minor_faction_id'] == factionId:
-            factionPosition = i
+            factionListPosition = i
             break
 	    
     messageVariables = [
@@ -193,7 +209,8 @@ def readySystem(systemInfo, factionId):
         messageVariables += [states[3:]]
 
     # System Info Updated
-    messageVariables += [str(systemInfo['updated_at'])]
+    dt = datetime.datetime.fromtimestamp(systemInfo['updated_at'])
+    messageVariables += [dt.strftime('%Y/%m/%d %H:%M:%S')]
 
     print(messageVariables)
     message='''System: %s
@@ -205,8 +222,37 @@ Info updated at: %s''' % tuple(messageVariables)
     return message
 
 # Ready the Message
-#def readyFactionMessage(factionId):
-#    cacheSystem
+def readyFactionMessage(factionId):
+    # Check DB here
+    checkDBUpdate()
+
+    # Prepare the Message
+    messageVariables = [
+        'The Hellssina Knights',                                # TODO Make this variable
+        datetime.datetime.now().strftime('%Y/%m/%d'),           # Current Time
+        ]
+    
+    # Controlled Systems
+    controlledSystems = ''
+    for i in cacheSystems['Systems']:                                       # Loop through cachedSystems
+        if i['controlling_minor_faction_id'] == factionId:                  # Compare ID of Faction with the one Controlling the System
+            controlledSystems += i['name'] + '; '                           # Add System to list of controlled Systems
+    if len(controlledSystems) > 0:                                          # See if Faction controls atleast one System
+        messageVariables += [controlledSystems[:-1]]                        # Remove trailing Space and add controlledSystems to the messageVariables
+    else:
+        messageVariables += ['Faction does not controle any Systems']
+
+    # Systems requireing Attention
+    # TODO add this
+    messageVariables += ['Function not yet implimented']
+    
+    message = '''Faction overview for: %s on %s
+Controlled Systems:
+%s
+Systems Requireing Attention:
+%s''' % tuple(messageVariables)
+    return message
+
 
 
 #### Main Program ####
@@ -228,6 +274,9 @@ if os.path.isfile(os.path.join(tokenLocation, 'discordToken')) != True:         
 else:
     token = loadTokenFile(tokenLocation)
 
+# Shedule jobs
+def job():
+    print('testschedule')
 
 
 # Discord integration
@@ -238,12 +287,22 @@ client = discord.Client()
 async def on_ready():
     print('We have logged in as {0.user}'.format(client))
 
+# Background task loop
+async def my_background_task():
+    await client.wait_until_ready()
+    print('background task')
+    #while not client.is_closed:
+    while True:
+        schedule.run_pending()
+        await asyncio.sleep(61)
+            
 @client.event
 async def on_message(message):
     if message.author == client.user:
         return
 
     if message.content.startswith('!ping'):
+        print('channel: ' + str(message.channel))
         await message.channel.send('pong!')
 
     if message.content.startswith('!impressum'):
@@ -263,8 +322,14 @@ async def on_message(message):
         print(cacheSystems)
         await message.channel.send('done')
 
-    if message.content.startswith('!factioninfo'):
-        await message.channel.send(readySystem(cacheSystems['Systems'][0], settings['factionId']))
+    if message.content.startswith('!factionInfo'):
+        refreshFactions()
+        await message.channel.send(readyFactionMessage(settings['factionId']))
 
+    if message.content.startswith('!detaileFactionInfo'):
+        await message.channel.send(readyFactionMessage(settings['factionId']))
+        for i in range(len(cacheSystems['Systems'])):
+            await message.channel.send(readySystem(cacheSystems['Systems'][i], settings['factionId']))
 
+client.loop.create_task(my_background_task())
 client.run(token)
