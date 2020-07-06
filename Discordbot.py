@@ -12,7 +12,6 @@ import sys
 import time
 import datetime
 import pprint
-import schedule
 
 # for the Database
 import requests
@@ -20,6 +19,7 @@ import json
 
 # for Discord integration
 import discord      # discord module
+from discord.ext import commands, tasks
 import asyncio
 import logging      # dependency for discord
 
@@ -34,13 +34,13 @@ logger.addHandler(handler)
 
 #### variables ####
 token = None
-version = '0.0.8'
+version = '0.1.0'
 
 settings = {
-    'version': '0.0.8',                                 # Version Number
+    'version': '0.1.0',                                 # Version Number
     'databaseUpdated': None,                            # Timestamp of Database update
     'messagePosted': None,                              # Timestamp of last Message post
-    'updateTime': datetime.datetime(1, 1, 1, 17, 0),    # Default Update Time
+    'updateTime': None,                                 # TODO add Default Update Time
     'autoDBUpdate': False,                              # En-/Disables Automatic Database download
     'dailyUpdate': False,                               # En-/Disables Automatic Message Posting
     'dbLocation': os.getcwd(),                          # Standard Location of Database
@@ -100,6 +100,7 @@ def loadTokenFile(tokenLocation):
 ## Deal with DB ##
 # Download the DB
 def downloadDB():
+    print('downloadDB()')
     global settings
     tries = 0
     # Download attempts
@@ -128,6 +129,7 @@ def downloadDB():
 
 # refresh loaded Factions
 def refreshFactions():
+    print('refreshFactions()')
     global cacheSystems
     
     dbFile = open(os.path.join(settings['dbLocation'], 'systems_populated.json'), 'r')  # Open the DB file
@@ -154,6 +156,8 @@ def checkDBUpdate():
             downloadDB()
         else:
             refreshFactions()
+    if cacheSystems['refreshTime'] == None:
+        refreshFactions()
     
 ## Messages ##
 def readySystem(systemInfo, factionId):
@@ -213,7 +217,7 @@ def readySystem(systemInfo, factionId):
     messageVariables += [dt.strftime('%Y/%m/%d %H:%M:%S')]
 
     print(messageVariables)
-    message='''System: %s
+    message='''System: **%s**
 Economy: %s; Security: %s; Controlling Faction: %s
 System States: %s
 Happiness: %s; Influence: %s
@@ -258,7 +262,7 @@ Systems Requireing Attention:
 #### Main Program ####
 # Startup
 # Load settings
-if os.path.isfile('DiscordBotSettings') == True:
+if os.path.isfile('DiscordBotSettings.py') == True:
     settings = loadSettingsFile()
 else:
     createSettingsFile()
@@ -274,11 +278,6 @@ if os.path.isfile(os.path.join(tokenLocation, 'discordToken')) != True:         
 else:
     token = loadTokenFile(tokenLocation)
 
-# Shedule jobs
-def job():
-    print('testschedule')
-
-
 # Discord integration
 
 client = discord.Client()
@@ -291,10 +290,8 @@ async def on_ready():
 async def my_background_task():
     await client.wait_until_ready()
     print('background task')
-    #while not client.is_closed:
-    while True:
-        schedule.run_pending()
-        await asyncio.sleep(61)
+    while not client.is_closed:
+        await asyncio.sleep(6)
             
 @client.event
 async def on_message(message):
@@ -321,15 +318,34 @@ async def on_message(message):
         print('refresh complete')
         print(cacheSystems)
         await message.channel.send('done')
+            
 
     if message.content.startswith('!factionInfo'):
         refreshFactions()
         await message.channel.send(readyFactionMessage(settings['factionId']))
 
-    if message.content.startswith('!detaileFactionInfo'):
+    if message.content.startswith('!detailedFactionInfo'):
         await message.channel.send(readyFactionMessage(settings['factionId']))
         for i in range(len(cacheSystems['Systems'])):
             await message.channel.send(readySystem(cacheSystems['Systems'][i], settings['factionId']))
 
-client.loop.create_task(my_background_task())
+# Daily Update Message
+@tasks.loop(hours=24)
+async def called_once_a_day():
+    print(settings['dailyUpdate'])
+    if settings['dailyUpdate'] == True:
+        for i in settings['updateChannels']:
+            print(i)
+            channel = client.get_channel(i)
+            await channel.send(readyFactionMessage(settings['factionId']))
+            for k in range(len(cacheSystems['Systems'])):
+                await channel.send(readySystem(cacheSystems['Systems'][k], settings['factionId']))
+
+@called_once_a_day.before_loop
+async def before():
+    await client.wait_until_ready()
+    print('finished waiting')
+
+called_once_a_day.start()
+#client.loop.create_task(my_background_task())
 client.run(token)
