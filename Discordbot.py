@@ -34,10 +34,10 @@ logger.addHandler(handler)
 
 #### variables ####
 token = None
-version = '0.1.0'
+version = '0.1.2'
 
 settings = {
-    'version': '0.1.0',                                 # Version Number
+    'version': '0.1.2',                                 # Version Number
     'databaseUpdated': None,                            # Timestamp of Database update
     'messagePosted': None,                              # Timestamp of last Message post
     'updateTime': None,                                 # TODO add Default Update Time
@@ -69,7 +69,7 @@ https://github.com/SpoonLoeffel/InterstellarMonitoringSystem''' % (version)
 def createSettingsFile():
     # TODO Add Error Checking
     fileObj = open('DiscordBotSettings.py', 'w')
-    fileObj.write('settings = ' + pprint.pformat(settings) + '\n')
+    fileObj.write('import datetime\n\nsettings = ' + pprint.pformat(settings) + '\n')
     fileObj.close()
 
 # Load Settings file
@@ -146,21 +146,23 @@ def refreshFactions():
 # check if DB should be updated
 def checkDBUpdate():
     dtnow = datetime.datetime.now()
-    updateDelta = datetime.timedelta(hours=24)
-    if settings['autoDBUpdate'] == True:
-        if settings['databaseUpdated'] < dtnow - updateDelta:
-            downloadDB()
-        elif settings['databaseUpdated'] == None:
-            downloadDB()
-        elif os.path.isfile(os.path.join(settings['dbLocation'], 'systems_populated.json')) == False:
-            downloadDB()
-        else:
-            refreshFactions()
+    updateDelta = datetime.timedelta(hours=12)
+    if os.path.isfile(os.path.join(settings['dbLocation'], 'systems_populated.json')) == True:
+        if settings['autoDBUpdate'] == True:
+            if settings['databaseUpdated'] < dtnow - updateDelta:
+                downloadDB()
+            elif settings['databaseUpdated'] == None:
+                downloadDB()
+            else:
+                refreshFactions()
+    else:
+        downloadDB()
     if cacheSystems['refreshTime'] == None:
         refreshFactions()
     
 ## Messages ##
 def readySystem(systemInfo, factionId):
+    print(f'readySystem({systemInfo}, {factionId})')
     factionListPosition = 0
     for i in range(len(systemInfo['minor_faction_presences'])):
         if systemInfo['minor_faction_presences'][i]['minor_faction_id'] == factionId:
@@ -217,17 +219,31 @@ def readySystem(systemInfo, factionId):
     messageVariables += [dt.strftime('%Y/%m/%d %H:%M:%S')]
 
     print(messageVariables)
+#     message='''System: **%s**
+# Economy: %s; Security: %s; Controlling Faction: %s
+# System States: %s
+# Happiness: %s; Influence: %s
+# Recovering States: %s; Current States: %s; Pending States: %s
+# Info updated at: %s''' % tuple(messageVariables)
     message='''System: **%s**
-Economy: %s; Security: %s; Controlling Faction: %s
-System States: %s
-Happiness: %s; Influence: %s
-Recovering States: %s; Current States: %s; Pending States: %s
+-------------------------------
+Economy:             %s
+Security:            %s
+Controlling Faction: %s
+System States:       %s
+Happiness:           %s
+Infulence:           %s
+Recovering States:   %s
+Current States:      %s
+Pending States:      %s
+-------------------------------
 Info updated at: %s''' % tuple(messageVariables)
     return message
 
 # Ready the Message
 def readyFactionMessage(factionId):
     # Check DB here
+    print('readyFactionMessage()')
     checkDBUpdate()
 
     # Prepare the Message
@@ -325,21 +341,34 @@ async def on_message(message):
         await message.channel.send(readyFactionMessage(settings['factionId']))
 
     if message.content.startswith('!detailedFactionInfo'):
-        await message.channel.send(readyFactionMessage(settings['factionId']))
-        for i in range(len(cacheSystems['Systems'])):
-            await message.channel.send(readySystem(cacheSystems['Systems'][i], settings['factionId']))
+        if message.author.id in [settings['owner']] + settings['adminUsers']:
+            await message.channel.send(readyFactionMessage(settings['factionId']))
+            for i in range(len(cacheSystems['Systems'])):
+                await message.channel.send(readySystem(cacheSystems['Systems'][i], settings['factionId']))
+                
+    if message.content.startswith('!ShootMeInTheHead'):
+        if message.author.id in [settings['owner']] + settings['adminUsers']:
+            await message.channel.send('Goodbye!')
+            sys.exit()
 
 # Daily Update Message
 @tasks.loop(hours=24)
 async def called_once_a_day():
     print(settings['dailyUpdate'])
     if settings['dailyUpdate'] == True:
-        for i in settings['updateChannels']:
-            print(i)
-            channel = client.get_channel(i)
-            await channel.send(readyFactionMessage(settings['factionId']))
-            for k in range(len(cacheSystems['Systems'])):
-                await channel.send(readySystem(cacheSystems['Systems'][k], settings['factionId']))
+        dtnow = datetime.datetime.now()
+        updateDelta = datetime.timedelta(hours=12)
+        if (settings['messagePosted'] < dtnow - updateDelta) or (settings['messagePosted'] == None):
+            for i in settings['updateChannels']:
+                print(i)
+                channel = client.get_channel(i)
+                await channel.send(readyFactionMessage(settings['factionId']))
+                for k in range(len(cacheSystems['Systems'])):
+                    await channel.send(readySystem(cacheSystems['Systems'][k], settings['factionId']))
+            
+            settings['messagePosted'] = datetime.datetime.now()
+            createSettingsFile()
+            refreshFactions()
 
 @called_once_a_day.before_loop
 async def before():
