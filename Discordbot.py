@@ -225,17 +225,19 @@ def readySystem(systemInfo, factionId):
 # Happiness: %s; Influence: %s
 # Recovering States: %s; Current States: %s; Pending States: %s
 # Info updated at: %s''' % tuple(messageVariables)
+
+## DO NOT MOVE THE SPACING IT FITS IN DISCORD
     message='''System: **%s**
 -------------------------------
-Economy:             %s
-Security:            %s
+Economy:                   %s
+Security:                     %s
 Controlling Faction: %s
-System States:       %s
-Happiness:           %s
-Infulence:           %s
+System States:          %s
+Happiness:                 %s
+Influence:                   %s
 Recovering States:   %s
-Current States:      %s
-Pending States:      %s
+Current States:         %s
+Pending States:        %s
 -------------------------------
 Info updated at: %s''' % tuple(messageVariables)
     return message
@@ -262,14 +264,14 @@ def readyFactionMessage(factionId):
     else:
         messageVariables += ['Faction does not controle any Systems']
 
-    # Systems requireing Attention
+    # Systems requiring Attention
     # TODO add this
     messageVariables += ['Function not yet implimented']
     
     message = '''Faction overview for: %s on %s
 Controlled Systems:
 %s
-Systems Requireing Attention:
+Systems Requiring Attention:
 %s''' % tuple(messageVariables)
     return message
 
