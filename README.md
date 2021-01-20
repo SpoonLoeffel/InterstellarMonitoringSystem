@@ -8,3 +8,4 @@ Planned initial features:
 Planned later features:
 - Notification if System is in a State that requires attention
 - Indication of how a Status has changed
+- Request Flythroughs through Systems with out of date info
